@@ -1,0 +1,16 @@
+[project]
+name = "rag-docs"
+version = "0.1.0"
+description = "A basic RAG docs application with ingestion and Streamlit UI."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit>=1.45.0",
+    "groq>=1.0.0",
+    "google-genai>=1.0.0",
+    "pinecone>=6.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+rag-docs = "rag_docs:main"
