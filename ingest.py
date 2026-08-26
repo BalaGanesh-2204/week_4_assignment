@@ -1,84 +1,90 @@
-from chunk import create_chunks
-from embed import get_embeddings
-from store import (
-    create_index_if_not_exists,
-    upsert_chunks,
-)
+"""
+Ingestion pipeline entry point.
+
+Reads Markdown from docs/, chunks it, embeds it with Gemini and
+stores vectors in a dedicated Pinecone index. Also builds the
+local BM25 keyword index used for hybrid search.
+"""
+
+import sys
+
+import chunker
+import embedder
+import vector_store
+import keyword_search
+
+from config import validate_config, PINECONE_INDEX_NAME
 
 
-def ingest_documents():
+def run_ingest(full_rebuild: bool = False) -> dict:
     """
-    Complete document ingestion pipeline.
+    Run the full ingestion pipeline.
+
+    Returns a small stats dict for callers (CLI or Streamlit).
     """
 
-    print("=" * 60)
-    print("RAG DOCUMENT INGESTION")
-    print("=" * 60)
+    validate_config()
 
-    # -----------------------------------------------------
-    # Step 1: Create Pinecone index
-    # -----------------------------------------------------
+    print("Loading Markdown files...")
+    documents = chunker.load_markdown_files()
 
-    print("\n[1/4] Checking Pinecone index...")
+    print(f"Found {len(documents)} document(s).")
 
-    create_index_if_not_exists()
-
-    print("Pinecone index ready.")
-
-    # -----------------------------------------------------
-    # Step 2: Load and chunk documents
-    # -----------------------------------------------------
-
-    print("\n[2/4] Loading and chunking documents...")
-
-    chunks = create_chunks()
-
-    print(
-        f"Created {len(chunks)} chunks."
-    )
+    print("Creating knowledge chunks...")
+    chunks = chunker.create_chunks()
 
     if not chunks:
-        print("No chunks found.")
-        return 0
+        raise ValueError(
+            "No chunks were produced. Check the contents of docs/."
+        )
 
-    # -----------------------------------------------------
-    # Step 3: Generate embeddings
-    # -----------------------------------------------------
+    print(f"Created {len(chunks)} chunk(s).")
 
-    print("\n[3/4] Generating Gemini embeddings...")
+    if full_rebuild:
+        print("Full rebuild requested - clearing namespace...")
+        try:
+            vector_store.delete_namespace()
+        except Exception as exc:
+            print(f"Namespace clear skipped: {exc}")
 
-    texts = [
-        chunk["text"]
-        for chunk in chunks
-    ]
-
-    embeddings = get_embeddings(texts)
-
-    print(
-        f"Generated {len(embeddings)} embeddings."
+    print("Generating embeddings with Gemini...")
+    embeddings = embedder.embed_documents(
+        [chunk["text"] for chunk in chunks]
     )
 
-    # -----------------------------------------------------
-    # Step 4: Store in Pinecone
-    # -----------------------------------------------------
+    print(f"Upserting into Pinecone index '{PINECONE_INDEX_NAME}'...")
+    upserted = vector_store.upsert_chunks(chunks, embeddings)
 
-    print("\n[4/4] Uploading to Pinecone...")
+    print("Writing local chunk store + BM25 keyword index...")
+    keyword_search.write_chunk_store(chunks)
+    keyword_search.build_keyword_index(chunks)
 
-    count = upsert_chunks(
-        chunks,
-        embeddings,
-    )
+    stats = {
+        "documents": len(documents),
+        "chunks": len(chunks),
+        "upserted": upserted,
+        "index": PINECONE_INDEX_NAME,
+    }
 
-    print(
-        f"Successfully upserted {count} vectors."
-    )
+    print("\nIngestion complete:")
+    print(f"  Documents : {stats['documents']}")
+    print(f"  Chunks    : {stats['chunks']}")
+    print(f"  Upserted  : {stats['upserted']}")
 
-    print("\n" + "=" * 60)
-    print("INGESTION COMPLETED")
-    print("=" * 60)
+    return stats
 
-    return count
+
+def main():
+    """
+    CLI entry point.
+    """
+
+    try:
+        run_ingest()
+    except Exception as exc:
+        print(f"\nIngestion failed: {exc}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    ingest_documents()
+    main()
