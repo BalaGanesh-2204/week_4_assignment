@@ -3,7 +3,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env for local development
 load_dotenv()
 
 
@@ -15,13 +14,33 @@ BASE_DIR = Path(__file__).resolve().parent
 
 DOCS_DIR = BASE_DIR / "docs"
 
+MOCK_DATA_DIR = BASE_DIR / "mock_data"
+
+DATA_DIR = BASE_DIR / "data"
+
+LOGS_DIR = BASE_DIR / "logs"
+
+
+def ensure_dirs():
+    """
+    Create runtime directories if they are missing.
+    """
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+ensure_dirs()
+
 
 # ---------------------------------------------------------
 # API KEYS
 # ---------------------------------------------------------
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 
 
@@ -29,20 +48,16 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 # MODEL CONFIGURATION
 # ---------------------------------------------------------
 
-# Groq LLM
 GROQ_MODEL = os.getenv(
     "GROQ_MODEL",
-    "llama-3.3-70b-versatile"
+    "openai/gpt-oss-120b"
 )
 
-# Gemini embedding model
 EMBEDDING_MODEL = os.getenv(
     "EMBEDDING_MODEL",
     "gemini-embedding-001"
 )
 
-# Gemini embedding dimensions
-# 768 is sufficient for this project and reduces vector size.
 EMBEDDING_DIMENSION = int(
     os.getenv("EMBEDDING_DIMENSION", "768")
 )
@@ -54,12 +69,12 @@ EMBEDDING_DIMENSION = int(
 
 PINECONE_INDEX_NAME = os.getenv(
     "PINECONE_INDEX_NAME",
-    "rag-docs-index"
+    "ecommerce-support-index"
 )
 
 PINECONE_NAMESPACE = os.getenv(
     "PINECONE_NAMESPACE",
-    "documents"
+    "support-docs"
 )
 
 PINECONE_CLOUD = os.getenv(
@@ -87,12 +102,70 @@ CHUNK_OVERLAP = int(
 
 
 # ---------------------------------------------------------
-# RETRIEVAL CONFIGURATION
+# HYBRID RETRIEVAL CONFIGURATION
 # ---------------------------------------------------------
 
-TOP_K = int(
-    os.getenv("TOP_K", "5")
+VECTOR_TOP_K = int(
+    os.getenv("VECTOR_TOP_K", "20")
 )
+
+KEYWORD_TOP_K = int(
+    os.getenv("KEYWORD_TOP_K", "20")
+)
+
+FINAL_TOP_K = int(
+    os.getenv("FINAL_TOP_K", "5")
+)
+
+RRF_K = int(
+    os.getenv("RRF_K", "60")
+)
+
+
+# ---------------------------------------------------------
+# AGENT HARNESS CONFIGURATION
+# ---------------------------------------------------------
+
+# Hard cap on model steps (tool-call rounds) per turn.
+MAX_STEPS = int(
+    os.getenv("MAX_STEPS", "5")
+)
+
+
+# ---------------------------------------------------------
+# BUSINESS RULES
+# ---------------------------------------------------------
+
+STORE_NAME = os.getenv(
+    "STORE_NAME",
+    "ShopKart"
+)
+
+SUPPORT_LEAD = os.getenv(
+    "SUPPORT_LEAD",
+    "Balaganesh"
+)
+
+RETURN_WINDOW_DAYS = int(
+    os.getenv("RETURN_WINDOW_DAYS", "30")
+)
+
+ESCALATE_REFUND_THRESHOLD = float(
+    os.getenv("ESCALATE_REFUND_THRESHOLD", "200.0")
+)
+
+
+# ---------------------------------------------------------
+# GUARDRAIL CONFIGURATION
+# ---------------------------------------------------------
+
+BLOCK_ON_INJECTION = os.getenv(
+    "BLOCK_ON_INJECTION",
+    "true"
+).lower() in ("true", "1", "yes")
+
+
+RESTOCKING_FEE_RATE = 0.10
 
 
 # ---------------------------------------------------------
@@ -138,8 +211,8 @@ def get_groq_client():
         from groq import Groq
     except ImportError as exc:
         raise ImportError(
-            "The 'groq' package is required to create a Groq client. "
-            "Install it with 'pip install groq' or add it to your environment."
+            "The 'groq' package is required. "
+            "Install it with 'pip install groq'."
         ) from exc
 
     return Groq(api_key=GROQ_API_KEY)
@@ -157,8 +230,8 @@ def get_gemini_client():
         from google import genai
     except ImportError as exc:
         raise ImportError(
-            "The 'google-genai' package is required to create a Gemini client. "
-            "Install it with 'pip install google-genai' or add it to your environment."
+            "The 'google-genai' package is required. "
+            "Install it with 'pip install google-genai'."
         ) from exc
 
     return genai.Client(api_key=GEMINI_API_KEY)
