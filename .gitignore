@@ -1,3 +1,17 @@
+# Secrets
 .env
-venv/
+.streamlit/secrets.toml
+
+# Python runtime
 __pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime artifacts (memory, logs, indexes)
+data/
+logs/
+
+# OS junk
+.DS_Store
+Thumbs.db
