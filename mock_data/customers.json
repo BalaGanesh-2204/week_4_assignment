@@ -1,0 +1,50 @@
+[
+  {
+    "customer_id": "CUS-1001",
+    "name": "Anita Sharma",
+    "email": "anita.sharma@example.com",
+    "tier": "gold",
+    "member_since": "2023-03-14",
+    "preferred_contact": "email"
+  },
+  {
+    "customer_id": "CUS-1002",
+    "name": "Rahul Verma",
+    "email": "rahul.verma@example.com",
+    "tier": "silver",
+    "member_since": "2024-07-02",
+    "preferred_contact": "sms"
+  },
+  {
+    "customer_id": "CUS-1003",
+    "name": "Priya Iyer",
+    "email": "priya.iyer@example.com",
+    "tier": "platinum",
+    "member_since": "2021-11-20",
+    "preferred_contact": "email"
+  },
+  {
+    "customer_id": "CUS-1004",
+    "name": "Vikram Nair",
+    "email": "vikram.nair@example.com",
+    "tier": "bronze",
+    "member_since": "2025-01-09",
+    "preferred_contact": "whatsapp"
+  },
+  {
+    "customer_id": "CUS-1005",
+    "name": "Sara Khan",
+    "email": "sara.khan@example.com",
+    "tier": "silver",
+    "member_since": "2024-05-30",
+    "preferred_contact": "email"
+  },
+  {
+    "customer_id": "CUS-1006",
+    "name": "Dev Patel",
+    "email": "dev.patel@example.com",
+    "tier": "gold",
+    "member_since": "2022-08-17",
+    "preferred_contact": "phone"
+  }
+]

@@ -1,0 +1,92 @@
+[
+  {
+    "sku": "SKU-ASP-001",
+    "name": "AirSound Pro Wireless Headphones",
+    "stock": 14,
+    "restock_date": null
+  },
+  {
+    "sku": "SKU-PHB-010",
+    "name": "PowerHub 65W GaN Charger",
+    "stock": 42,
+    "restock_date": null
+  },
+  {
+    "sku": "SKU-SW3-220",
+    "name": "PulseFit Smartwatch 3",
+    "stock": 3,
+    "restock_date": "2026-09-05"
+  },
+  {
+    "sku": "SKU-CSE-115",
+    "name": "Silicone Watch Strap (Black)",
+    "stock": 87,
+    "restock_date": null
+  },
+  {
+    "sku": "SKU-BKP-330",
+    "name": "TrailPack 30L Backpack",
+    "stock": 21,
+    "restock_date": null
+  },
+  {
+    "sku": "SKU-LTP-500",
+    "name": "ZenBook Air 14 Laptop",
+    "stock": 6,
+    "restock_date": null
+  },
+  {
+    "sku": "SKU-SPK-210",
+    "name": "BoomBox Mini Bluetooth Speaker",
+    "stock": 0,
+    "restock_date": "2026-09-18"
+  },
+  {
+    "sku": "SKU-CBL-118",
+    "name": "USB-C Braided Cable 2m",
+    "stock": 240,
+    "restock_date": null
+  },
+  {
+    "sku": "SKU-CMR-770",
+    "name": "PixelShot X200 Camera",
+    "stock": 8,
+    "restock_date": null
+  },
+  {
+    "sku": "SKU-TSH-445",
+    "name": "Everyday Cotton T-Shirt (M)",
+    "stock": 150,
+    "restock_date": null
+  },
+  {
+    "sku": "SKU-KTL-900",
+    "name": "Ceramic Pour-Over Kettle",
+    "stock": 33,
+    "restock_date": null
+  },
+  {
+    "sku": "SKU-GAM-660",
+    "name": "StrikeForce Mechanical Keyboard",
+    "stock": 17,
+    "restock_date": null
+  },
+  {
+    "sku": "SKU-MSE-661",
+    "name": "GlideX Gaming Mouse",
+    "stock": 25,
+    "restock_date": null
+  },
+  {
+    "sku": "SKU-EAR-120",
+    "name": "AirSound Buds Lite",
+    "stock": 4,
+    "restock_date": "2026-09-01"
+  },
+  {
+    "sku": "SKU-DSK-780",
+    "name": "RiseUp Laptop Stand",
+    "stock": 0,
+    "restock_date": "2026-10-02"
+  }
+]

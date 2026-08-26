@@ -1,297 +1,330 @@
+"""
+Streamlit UI for the Bala Support e-commerce agent.
+
+- Chat with the agent (structured answers rendered per turn).
+- Sidebar "For Balaganesh": open escalations + reminders with resolve
+  buttons, customer binding, admin actions.
+- Trace viewer: browse every logged turn JSON.
+"""
+
 import streamlit as st
 
-from config import (
-    GROQ_MODEL,
-    TOP_K,
-    get_groq_client,
-)
+import agent_logger
+import harness
+import ingest
+import memory_store
+import reminders
 
-from chunk import create_chunks, load_markdown_files
-from embed import get_embedding
+from config import STORE_NAME
 
-from store import (
-    search,
-    get_index_stats,
-    delete_namespace,
-    index_exists,
-)
-
-from ingest import ingest_documents
-
-
-# ---------------------------------------------------------
-# PAGE CONFIG
-# ---------------------------------------------------------
 
 st.set_page_config(
-    page_title="RAG Assistant",
-    page_icon="📚",
-    layout="wide",
+    page_title=f"{STORE_NAME} Support Agent",
+    page_icon="🛒",
+    layout="centered",
 )
 
 
 # ---------------------------------------------------------
-# HELPERS
+# SESSION STATE INIT
 # ---------------------------------------------------------
 
-def build_context(matches):
-    """Convert Pinecone matches into an LLM context."""
-    context_parts = []
+if "session_id" not in st.session_state:
 
-    for index, match in enumerate(matches, start=1):
-        metadata = match.get("metadata", {})
-        source = metadata.get("source", "Unknown")
-        text = metadata.get("text", "")
+    st.session_state.session_id = agent_logger.new_session_id()
 
-        context_parts.append(
-            f"""
-SOURCE {index}
-File: {source}
-
-{text}
-"""
-        )
-
-    return "\n".join(context_parts)
-
-
-def generate_answer(question: str, matches):
-    """Generate answer using Groq LLM."""
-    if not matches:
-        return "I could not find relevant information in the provided documents."
-
-    context = build_context(matches)
-
-    system_prompt = """
-You are a document question-answering assistant.
-
-Your job is to answer questions ONLY using the
-provided document context.
-
-Rules:
-1. Do not invent information.
-2. If the answer is not available in the context,
-   clearly say that the information was not found
-   in the documents.
-3. Keep the answer clear and concise.
-4. Cite the source number for factual claims.
-5. Use citations like [Source 1], [Source 2].
-6. Do not cite sources that do not support the answer.
-"""
-
-    user_prompt = f"""
-DOCUMENT CONTEXT:
-
-{context}
-
-USER QUESTION:
-
-{question}
-
-Answer the question using only the document context.
-Include source citations such as [Source 1].
-"""
-
-    client = get_groq_client()
-    response = client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.2,
-        max_tokens=1000,
-    )
-
-    return response.choices[0].message.content
-
-
-def retrieve_documents(question, top_k):
-    """Convert question into an embedding and search Pinecone."""
-    query_embedding = get_embedding(question)
-    results = search(query_embedding=query_embedding, top_k=top_k)
-    return results.matches
-
-
-def init_session_state():
-    if "history" not in st.session_state:
-        st.session_state.history = []
-    if "retrieved_docs" not in st.session_state:
-        st.session_state.retrieved_docs = TOP_K
-    if "conversation_cleared" not in st.session_state:
-        st.session_state.conversation_cleared = False
-
-
-@st.cache_data(show_spinner=False)
-def get_document_stats():
-    """Return document and chunk counts for the dashboard."""
     try:
-        documents = load_markdown_files()
-        chunks = create_chunks()
-        return len(documents), len(chunks)
+        memory_store.register_session(st.session_state.session_id)
     except Exception:
-        return 0, 0
+        pass
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "customer_email" not in st.session_state:
+    st.session_state.customer_email = ""
 
 
-def get_pinecone_status():
-    """Return a Pinecone connection status string."""
-    try:
-        return "Connected" if index_exists() else "Not connected"
-    except Exception as exc:
-        return f"Error: {exc}"
-
-
-def render_chat_history():
-    if not st.session_state.history:
-        st.info("Ask a question about your documents to begin the conversation.")
-        return
-
-    for message in st.session_state.history:
-        role = message["role"]
-        content = message["content"]
-        sources = message.get("sources")
-
-        if hasattr(st, "chat_message"):
-            with st.chat_message(role):
-                st.write(content)
-                if sources:
-                    with st.expander("Sources"):
-                        for source in sources:
-                            st.markdown(
-                                f"**{source['source']}** (score: {source['score']:.4f})"
-                            )
-                            st.write(source["text"])
-        else:
-            prefix = "You:" if role == "user" else "Assistant:"
-            st.markdown(f"**{prefix}** {content}")
-            if sources:
-                with st.expander("Sources"):
-                    for source in sources:
-                        st.markdown(
-                            f"**{source['source']}** (score: {source['score']:.4f})"
-                        )
-                        st.write(source["text"])
+SESSION_ID = st.session_state.session_id
 
 
 # ---------------------------------------------------------
-# STATE
-
-init_session_state()
-
-
+# SIDEBAR - FOR BALAGANESH
 # ---------------------------------------------------------
-# SIDEBAR
 
 with st.sidebar:
-    st.title("Settings")
-    st.write("Manage document ingestion, retrieval settings, and conversation state.")
 
-    st.markdown("---")
+    st.title(f"🛒 {STORE_NAME} Support")
+    st.caption(f"Session `{SESSION_ID}`")
 
-    st.session_state.retrieved_docs = st.slider(
-        "Retrieved documents",
-        min_value=1,
-        max_value=10,
-        value=st.session_state.retrieved_docs,
-        step=1,
+    st.divider()
+
+    # ----- Reminder / escalation board -----
+
+    counts = reminders.counts()
+    st.subheader("📌 For Balaganesh")
+
+    if counts["total"] == 0:
+        st.info("No open escalations or reminders.")
+    else:
+        st.markdown(
+            f"**{counts['escalations']}** escalation(s) · "
+            f"**{counts['reminders']}** reminder(s) · "
+            f"**{counts['critical']}** critical"
+        )
+
+        for entry in reminders.open_entries():
+
+            icon = {
+                "critical": "🚨",
+                "high": "❗",
+                "medium": "🔔",
+                "low": "💬",
+            }.get(entry["urgency"], "🔔")
+
+            label = (
+                f"{icon} [{entry['type'].upper()}] "
+                f"{entry['message'][:80]}"
+            )
+
+            with st.expander(label):
+                st.write(entry["message"])
+                st.caption(
+                    f"id {entry['id']} · urgency {entry['urgency']} · "
+                    f"created {entry['created_at'][:19]}"
+                )
+                if st.button(
+                    "Mark resolved",
+                    key=f"resolve_{entry['id']}",
+                ):
+                    reminders.resolve_entry(entry["id"])
+                    st.rerun()
+
+    st.divider()
+
+    # ----- Customer binding -----
+
+    st.subheader("👤 Customer binding")
+
+    email_input = st.text_input(
+        "Customer email",
+        value=st.session_state.customer_email,
+        placeholder="anita.sharma@example.com",
     )
 
-    st.markdown("---")
-    st.subheader("Model")
-    st.write(f"**Groq:** {GROQ_MODEL}")
-    st.write("**Embeddings:** Gemini")
-    st.write("**Vector Store:** Pinecone")
+    if email_input != st.session_state.customer_email:
+        st.session_state.customer_email = email_input.strip()
+        st.rerun()
 
-    st.markdown("---")
-    if st.button("🧩 Ingest Documents", use_container_width=True):
+    if st.session_state.customer_email:
+
         try:
-            with st.spinner("Reading, chunking, embedding and storing documents..."):
-                count = ingest_documents()
-            st.success(f"Successfully ingested {count} chunks.")
-        except Exception as e:
-            st.error(f"Ingestion failed: {e}")
+            facts = memory_store.recall_facts(
+                st.session_state.customer_email.lower()
+            )
+        except Exception:
+            facts = []
 
-    if st.button("🗑️ Clear Vector Store", use_container_width=True):
-        try:
-            delete_namespace()
-            st.success("Vector store cleared.")
-        except Exception as e:
-            st.error(f"Unable to clear vector store: {e}")
+        st.caption(
+            f"Bound to `{st.session_state.customer_email}` · "
+            f"{len(facts)} remembered fact(s)"
+        )
+    else:
+        st.caption("Guest mode - no long-term memory binding.")
 
-    if st.button("Clear conversation", use_container_width=True):
-        st.session_state.history = []
-        st.session_state.conversation_cleared = True
+    st.divider()
 
-    st.markdown("---")
-    if st.button("📊 Refresh Statistics", use_container_width=True):
-        try:
-            stats = get_index_stats()
-            st.write(stats)
-        except Exception as e:
-            st.error(f"Unable to retrieve statistics: {e}")
+    # ----- Admin actions -----
+
+    with st.expander("⚙️ Admin"):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("Re-ingest docs"):
+                with st.spinner("Ingesting..."):
+                    try:
+                        stats = ingest.run_ingest()
+                        st.success(
+                            f"{stats['upserted']} vectors upserted "
+                            f"({stats['chunks']} chunks)."
+                        )
+                    except Exception as exc:
+                        st.error(f"Ingest failed: {exc}")
+
+        with col2:
+            if st.button("Pinecone stats"):
+                try:
+                    import vector_store
+
+                    st.json(vector_store.get_index_stats())
+                except Exception as exc:
+                    st.error(f"Stats failed: {exc}")
+
+        if st.button("Reset this chat"):
+            st.session_state.messages = []
+            st.rerun()
+
+        if st.button(
+            "Forget bound customer's memory",
+            disabled=not st.session_state.customer_email,
+        ):
+            try:
+                removed = memory_store.forget_customer(
+                    st.session_state.customer_email.lower()
+                )
+                st.success(f"Deleted {removed} fact(s).")
+            except Exception as exc:
+                st.error(f"Failed: {exc}")
+
+    st.divider()
+
+    # ----- Trace viewer -----
+
+    st.subheader("🕵️ Trace logs")
+
+    sessions = agent_logger.get_sessions()
+
+    if not sessions:
+        st.caption("No logged sessions yet.")
+    else:
+
+        chosen_session = st.selectbox(
+            "Session",
+            sessions,
+            index=(
+                sessions.index(SESSION_ID)
+                if SESSION_ID in sessions
+                else 0
+            ),
+        )
+
+        turn_files = agent_logger.get_turn_logs(chosen_session)
+
+        if turn_files:
+
+            labels = [f.name for f in turn_files]
+
+            chosen_turn = st.selectbox("Turn", labels)
+
+            log = agent_logger.read_log(
+                next(
+                    f for f in turn_files if f.name == chosen_turn
+                )
+            )
+
+            with st.expander("Raw turn log", expanded=False):
+                st.json(log)
+
+        else:
+            st.caption("No turns logged for this session.")
 
 
 # ---------------------------------------------------------
-# MAIN UI
+# CHAT UI
+# ---------------------------------------------------------
 
-st.header("😄 RAG Assistant")
-st.write("Ask questions about the documents stored in the knowledge base.")
+st.title("💬 Customer Support")
+st.caption(
+    "Ask about orders, shipping, returns, refunds, promos or "
+    "products. Escalations reach the human support lead."
+)
 
-stats_col1, stats_col2, stats_col3 = st.columns([1, 1, 1])
 
-with stats_col1:
-    docs_count, chunks_count = get_document_stats()
-    st.metric("📄 Documents", docs_count)
+def _render_meta(meta: dict):
+    """
+    Expander under an assistant bubble with structured details.
+    """
 
-with stats_col2:
-    st.metric("🧩 Chunks", chunks_count)
+    lines = [
+        f"intent: `{meta.get('intent')}`",
+        f"confidence: `{meta.get('confidence')}`",
+        f"steps used: `{meta.get('steps_used')}`",
+    ]
 
-with stats_col3:
-    st.metric("🌲 Pinecone", get_pinecone_status())
+    if meta.get("tools_used"):
+        lines.append("tools: " + ", ".join(f"`{t}`" for t in meta["tools_used"]))
 
-st.markdown("---")
+    st.markdown(" · ".join(lines))
 
-render_chat_history()
-
-with st.form("query_form", clear_on_submit=True):
-    question = st.text_input(
-        "Ask a question about your documents...",
-        placeholder="Example: Is Nandhini a negative or positive character?",
-    )
-    submit = st.form_submit_button("Send")
-
-if submit:
-    if not question or not question.strip():
-        st.warning("Please enter a question.")
-    else:
-        st.session_state.history.append({"role": "user", "content": question})
-        try:
-            with st.spinner("Searching documents..."):
-                matches = retrieve_documents(question, st.session_state.retrieved_docs)
-
-            if not matches:
-                assistant_text = (
-                    "I could not find relevant information in the provided documents."
-                )
-                st.session_state.history.append({"role": "assistant", "content": assistant_text})
-            else:
-                with st.spinner("Generating answer..."):
-                    answer = generate_answer(question, matches)
-
-                sources = [
-                    {
-                        "source": match.get("metadata", {}).get("source", "Unknown"),
-                        "score": match.get("score", 0),
-                        "text": match.get("metadata", {}).get("text", ""),
-                    }
-                    for match in matches
-                ]
-
-                st.session_state.history.append(
-                    {"role": "assistant", "content": answer, "sources": sources}
-                )
-        except Exception as e:
-            st.session_state.history.append(
-                {"role": "assistant", "content": f"Application error: {e}"}
+    if meta.get("citations"):
+        st.markdown("**Sources**")
+        for citation in meta["citations"]:
+            heading = citation.get("heading") or ""
+            st.markdown(
+                f"- 📄 `{citation.get('source')}`"
+                + (f" — {heading}" if heading else "")
             )
-        # Rerun is not required here; Streamlit will refresh on state changes.
+
+    flags = []
+    if meta.get("escalated"):
+        flags.append("🚨 escalated to Balaganesh")
+    if meta.get("needs_human"):
+        flags.append("🙋 needs human follow-up")
+
+    if flags:
+        st.warning(" · ".join(flags))
+
+    if meta.get("log_path"):
+        st.caption(f"turn log: `{meta['log_path']}`")
+
+
+for message in st.session_state.messages:
+
+    with st.chat_message(message["role"]):
+
+        st.markdown(message["content"])
+
+        if message["role"] == "assistant" and message.get("meta"):
+            with st.expander("Turn details", expanded=False):
+                _render_meta(message["meta"])
+
+
+user_input = st.chat_input("Type your message...")
+
+if user_input:
+
+    st.session_state.messages.append(
+        {"role": "user", "content": user_input}
+    )
+
+    with st.chat_message("user"):
+        st.markdown(user_input)
+
+    with st.chat_message("assistant"):
+
+        with st.spinner("Thinking..."):
+
+            try:
+
+                outcome = harness.run_turn(
+                    session_id=SESSION_ID,
+                    user_input=user_input,
+                    customer_email=(
+                        st.session_state.customer_email.strip() or None
+                    ),
+                )
+
+                final_answer = outcome["final_answer"]
+
+                meta = final_answer.model_dump()
+                meta["steps_used"] = outcome["steps_used"]
+                meta["log_path"] = outcome["log_path"]
+
+            except Exception as exc:
+
+                meta = None
+
+                st.error(
+                    "The support service hit an error. Please retry.\n\n"
+                    f"`{exc}`"
+                )
+
+    if meta is not None:
+
+        content = meta["answer"]
+
+        st.session_state.messages.append(
+            {"role": "assistant", "content": content, "meta": meta}
+        )
+
+        st.rerun()
