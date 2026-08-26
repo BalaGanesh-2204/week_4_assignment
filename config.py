@@ -169,6 +169,36 @@ RESTOCKING_FEE_RATE = 0.10
 
 
 # ---------------------------------------------------------
+# RETRY CONFIGURATION
+# ---------------------------------------------------------
+
+RETRY_MAX_ATTEMPTS = int(
+    os.getenv("RETRY_MAX_ATTEMPTS", "3")
+)
+
+RETRY_BASE_DELAY = float(
+    os.getenv("RETRY_BASE_DELAY", "1.0")
+)
+
+RETRY_BACKOFF_FACTOR = float(
+    os.getenv("RETRY_BACKOFF_FACTOR", "2.0")
+)
+
+
+# ---------------------------------------------------------
+# CACHE CONFIGURATION
+# ---------------------------------------------------------
+
+CACHE_TTL_SECONDS = int(
+    os.getenv("CACHE_TTL_SECONDS", "300")
+)
+
+CACHE_MAX_SIZE = int(
+    os.getenv("CACHE_MAX_SIZE", "128")
+)
+
+
+# ---------------------------------------------------------
 # VALIDATE REQUIRED KEYS
 # ---------------------------------------------------------
 
@@ -196,7 +226,7 @@ def validate_config():
 
 
 # ---------------------------------------------------------
-# CLIENTS
+# CLIENTS (with retry)
 # ---------------------------------------------------------
 
 def get_groq_client():
